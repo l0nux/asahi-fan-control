@@ -1,4 +1,4 @@
 # Project documentation
 
-Read [hardware findings](HARDWARE.md) for the observed system interfaces and
+Read [hardware interfaces](HARDWARE.md) for the Linux sensor interfaces and
 [the roadmap](ROADMAP.md) for development and publication stages.
