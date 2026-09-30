@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asahi-fan-control"
+version = "0.1.0"
+description = "Read-only English terminal dashboard for Asahi Linux fans and temperatures"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "l0nux"}]
+dependencies = []
+
+[project.scripts]
+asahi-fan-control = "asahi_fan_control.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["asahi_fan_control*"]
