@@ -1,58 +1,108 @@
 # Asahi Fan Control
 
-An English terminal dashboard for fan speeds, temperatures, and fan-control
-capabilities on Asahi Linux. Version 0.1 is **read-only**: it does not set fan
-speeds, enable kernel parameters, or require root.
+An English terminal dashboard for temperatures and **supervised manual fan
+control** on Apple Silicon Macs running Asahi Linux. Python 3.10+, Linux and
+curses are required; there are no third-party runtime dependencies.
 
-## Run
+Monitoring is read-only by default. Version 0.2 adds explicit control sessions,
+per-fan RPM targets, return to firmware control, and a separate recovery worker.
 
-Requires Linux and Python 3.10+ with curses (included with Fedora's Python).
-No third-party runtime dependencies.
+## Start
 
 ```sh
-python3 -m asahi_fan_control
-python3 -m asahi_fan_control --demo
-python3 -m asahi_fan_control --once
-python3 -m asahi_fan_control --json
+python3 -m asahi_fan_control                   # live monitor, no root
+python3 -m asahi_fan_control --demo --control  # complete simulated workflow
+sudo python3 -m asahi_fan_control --control   # real control session
 ```
 
-Use `Tab` to switch Overview/Diagnostics, arrow keys or `j`/`k` to scroll,
-`Space` to pause, `r` to refresh, and `q` to quit. Resize is supported.
-`--interval 2` changes the polling period in seconds. Demo data is explicitly
-labelled and does not read hardware. JSON is one snapshot, suitable for scripts.
+In the control session:
 
-Optional installation into a virtual environment:
+1. Press `E`, then `Y`, to enable the kernel's manual-control capability if needed.
+2. Press `N` to choose a fan, then `S`, enter its RPM and press Enter.
+3. Press `A` to request firmware control for all macsmc fans.
+4. Press `Q` to exit; the worker restores fans changed by this session.
+
+`Tab` switches Overview / Diagnostics / Control. Arrow keys or `J`/`K` scroll.
+`Space` pauses telemetry display (the control worker continues supervising).
+`R` refreshes; `Esc` cancels an RPM entry. Minimum terminal size: 42 columns ×
+14 rows. Lowercase keys work too.
+
+A manual target lasts **120 seconds** by default; `--hold-seconds 60` changes
+that limit (5–600 seconds). Setting a new target renews that fan's duration.
+There is no persistent or unattended manual-speed mode.
+
+## CLI
+
+```sh
+python3 -m asahi_fan_control --once
+python3 -m asahi_fan_control --json
+python3 -m asahi_fan_control --interval 2
+
+# Explicitly enable capability, without setting a manual target:
+sudo python3 -m asahi_fan_control --enable-control
+
+# Hold a target while this command supervises it, then return to firmware:
+sudo python3 -m asahi_fan_control --set 1 2500 --hold-seconds 60
+
+# Request automatic control without reloading the module:
+sudo python3 -m asahi_fan_control --auto
+
+# Exercise the same command lifecycle with simulated hardware:
+python3 -m asahi_fan_control --demo --enable-control --set 1 2500 --hold-seconds 5
+```
+
+Choose RPM values within the range reported by **your** fan. `--set` never
+implicitly enables the driver. `--enable-control` can be combined with `--set`
+or `--control` when enabling is intentional. `--auto` is not combined with
+`--enable-control`: reloading a module is not the automatic-return protocol.
+
+## Recovery and limits
+
+The independent worker owns sysfs writes, verifies target read-back, rejects
+missing/invalid limits, and requests automatic control on hold expiry, feedback
+failure, detected target interference, normal exit, caught termination signals,
+UI disconnection, or a five-second UI heartbeat lapse. It holds a process lock
+to exclude other instances of this program. Demo mode never touches sysfs,
+modprobe, the system lock, or hardware.
+
+**Manual control is marked unsafe by the kernel.** Recovery is best effort:
+it cannot protect against kernel failure, a killed/stuck worker, or failed
+sysfs writes. A process cannot perform recovery while suspended. Boot-time
+clocks expire the session after resume; return to Auto **before** suspending.
+Do not run other fan-control utilities at the same time. No CPU/GPU temperature
+is invented when the driver does not expose one, and no temperature-based fan
+curve is provided.
+
+The app reports an automatic request as **accepted by the driver**, not as a
+verified physical SMC mode. `fanN_target` may retain its previous value after
+Auto. Kernel capability may remain enabled until reboot; the app never edits
+boot/module configuration or installs a background service.
+
+## Installation
+
+Run directly from the clone, or install into a virtual environment:
 
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install .
 .venv/bin/asahi-fan-control
+sudo .venv/bin/asahi-fan-control --control
 ```
 
-## What it reports
-
-- Dynamically discovered hwmon sensors and thermal zones; no fixed hwmon index.
-- Current/minimum/maximum/target fan RPM when the driver exposes them.
-- Temperature labels, driver-reported limits, faults and alarms.
-- Driver write permissions and the macsmc `fan_control` parameter, separately
-  from the application's read-only policy.
-- Missing or invalid readings as unavailable, never as a fabricated zero.
-
-Zero RPM is a valid reading. The `fanX_target` value is a setpoint, **not** a
-reliable indication of automatic/manual mode. The application cannot determine
-the SMC's active policy from it. Temperatures are individual sensors, not an
-estimate of CPU or GPU temperature. Thermal-zone and hwmon readings can overlap.
-No generic safe-temperature thresholds or automatic fan curves are invented.
-
-## Development
+## Verification
 
 ```sh
 python3 -m unittest discover -s tests -v
 python3 -m compileall -q asahi_fan_control
 ```
 
-See [hardware interfaces](docs/HARDWARE.md) and the [staged roadmap](docs/ROADMAP.md).
+Tests include actual curses interaction through a pseudo-terminal and worker
+recovery against temporary sysfs fixtures. CI tests Python 3.10, 3.12 and 3.14.
+Automated tests never change the host fans. Real telemetry has been exercised;
+manual writes on the development machine have **not** been hardware-validated
+because interactive sudo authentication is required.
 
-## License
+See [hardware interfaces](docs/HARDWARE.md), [control design](docs/CONTROL.md),
+[roadmap](docs/ROADMAP.md), and [release notes](CHANGELOG.md).
 
-MIT. This project is independent of Apple and the Asahi Linux project.
+MIT licensed. Independent of Apple and the Asahi Linux project.
