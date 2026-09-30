@@ -1,5 +1,18 @@
 # Asahi Fan Control
 
+**GNOME Shell 51 extension available in version 0.3.0.** Monitor temperatures
+and set bounded fan targets from the top panel, with asynchronous operations
+that keep GNOME responsive during driver enabling. See the
+[GNOME installation and usage guide](docs/GNOME.md).
+
+```sh
+python3 tools/build-extension.py
+gnome-extensions install --force dist/asahi-fan-control@l0nux.github.io.shell-extension.zip
+gnome-extensions enable asahi-fan-control@l0nux.github.io
+```
+
+The original terminal interface remains available below.
+
 An English terminal dashboard for temperatures and **supervised manual fan
 control** on Apple Silicon Macs running Asahi Linux. Python 3.10+, Linux and
 curses are required; there are no third-party runtime dependencies.

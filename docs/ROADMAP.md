@@ -11,6 +11,9 @@
 5. Test sensor failures, command validation, worker shutdown/expiry and the
    complete terminal workflow; package the application and publish source/CI.
 
+6. Add a GNOME 51 extension with asynchronous telemetry/control, system
+   authentication, a standalone ZIP and GJS/headless GNOME integration tests.
+
 ## Validation still needed on hardware
 
 A real manual set/return cycle with authenticated root access has not yet been

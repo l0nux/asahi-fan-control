@@ -1,5 +1,18 @@
 # Release notes
 
+## 0.3.0
+
+- Added an English GNOME Shell 51 panel with temperatures, fan RPM, per-fan
+  bounded targets, explicit enabling, Auto, end-session and demo actions.
+- Kept all telemetry and control I/O outside GNOME's main loop using GIO async
+  subprocess APIs; a slow Enable request no longer blocks this interface.
+- Added system authentication through pkexec for the separate root worker;
+  monitoring stays unprivileged, with no installed authorization rules.
+- Restarted the worker idle lease after a slow command response so a successful
+  module reload does not immediately disconnect an otherwise healthy client.
+- Added a reproducible self-contained ZIP, packaging regression tests, GJS
+  transport/responsiveness tests and a headless GNOME 51 integration test.
+
 ## 0.2.0
 
 - Added a Control view with fan selection, RPM entry, explicit driver enabling

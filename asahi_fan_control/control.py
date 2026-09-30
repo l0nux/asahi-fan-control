@@ -391,6 +391,9 @@ def worker(demo: bool, hold_seconds: int, lease_seconds: float = 5.0) -> int:
                     result = dispatch(backend, request)
                 except (ValueError, ControlError, OSError) as error:
                     result = {'ok': False, 'message': str(error), **backend.status()}
+                # Module reloads can outlast the idle lease. Allow the client
+                # a fresh heartbeat window after the operation completes.
+                last_message = now()
                 print(json.dumps(result), flush=True)
     except (ControlError, OSError) as error:
         print(str(error), file=sys.stderr, flush=True)
