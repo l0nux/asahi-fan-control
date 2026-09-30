@@ -8,3 +8,4 @@ dist/
 .agents/
 .codex/
 mutter-night-light-backport/
+.local/

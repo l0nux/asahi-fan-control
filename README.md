@@ -51,7 +51,7 @@ python3 -m unittest discover -s tests -v
 python3 -m compileall -q asahi_fan_control
 ```
 
-See [hardware findings](docs/HARDWARE.md) and the [staged roadmap](docs/ROADMAP.md).
+See [hardware interfaces](docs/HARDWARE.md) and the [staged roadmap](docs/ROADMAP.md).
 
 ## License
 
