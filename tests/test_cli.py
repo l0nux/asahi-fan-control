@@ -35,6 +35,24 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn('--once or --json', result.stderr)
 
+    def test_control_argument_validation(self):
+        for args in [('--json', '--control'), ('--auto', '--enable-control'),
+                     ('--set', '1', '0'), ('--set', '../bad', '2000'),
+                     ('--hold-seconds', '0'), ('--hold-seconds', '601')]:
+            with self.subTest(args=args):
+                result = self.run_cli('--demo', *args)
+                self.assertEqual(result.returncode, 2)
+
+    def test_control_does_not_implicitly_enable(self):
+        result = self.run_cli('--demo', '--set', '1', '2000')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('enable control', result.stderr)
+
+    def test_explicit_demo_enable(self):
+        result = self.run_cli('--demo', '--enable-control')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('no hardware changed', result.stdout)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -94,7 +94,7 @@ class Reader:
             return 'driver read-only'
         if not os.access(path, os.W_OK):
             return 'permission required'
-        return 'writable (app read-only)'
+        return 'writable (requires control session)'
 
     def snapshot(self) -> Snapshot:
         self.issues = []
@@ -163,7 +163,7 @@ class Reader:
         elif parameter.lower() in ('n', '0'):
             control = 'Disabled by kernel (fan_control=N)'
         elif parameter.lower() in ('y', '1'):
-            control = 'Enabled in kernel; this application remains read-only'
+            control = 'Enabled in kernel; active SMC mode unverified'
         else:
             control = f'Unknown parameter value: {parameter}'
         if not temperatures and not fans:

@@ -35,14 +35,14 @@ default. Its documentation marks manual fan control unsafe because overheating
 fail-safe behavior cannot be guaranteed. The application reports the parameter
 when readable and checks target-file permissions independently.
 
-A read-only target is a kernel capability/configuration constraint. Version 0.1
-performs no writes to sysfs, does not reload modules, and does not edit boot
-configuration. Running as root does not enable an application control feature.
+A read-only target is a kernel capability/configuration constraint. Monitoring mode performs no writes. Version 0.2 adds an explicit root control
+session; its Enable action may reload macsmc_hwmon. Boot configuration is never
+edited. See [control design](CONTROL.md) for the write protocol and limitations.
 A writable target or a nonzero setpoint does not prove the current SMC policy.
 
-Manual control requires a separately validated design covering return to
-firmware control, crashes, suspend/resume, competing services and reliable
-thermal feedback. This project does not promise hardware fail-safe behavior.
+Manual control uses a separate worker with bounded holds and automatic-return
+requests. Real hardware validation is still needed; process recovery cannot
+cover every crash, suspend state or competing service. This project does not promise hardware fail-safe behavior.
 
 ## Primary references
 

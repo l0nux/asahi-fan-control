@@ -84,7 +84,7 @@ class SensorTests(unittest.TestCase):
         with patch('asahi_fan_control.sensors.os.access', return_value=False):
             self.assertEqual(Reader.target_access(path), 'permission required')
         with patch('asahi_fan_control.sensors.os.access', return_value=True):
-            self.assertEqual(Reader.target_access(path), 'writable (app read-only)')
+            self.assertEqual(Reader.target_access(path), 'writable (requires control session)')
 
     def test_disabled_parameter_and_missing_model(self):
         path = self.root / 'module/macsmc_hwmon/parameters/fan_control'
@@ -94,7 +94,7 @@ class SensorTests(unittest.TestCase):
         self.assertEqual(snapshot.model, 'Linux system')
         self.assertIn('Disabled', snapshot.fan_control)
         path.write_text('Y')
-        self.assertIn('remains read-only', self.reader.snapshot().fan_control)
+        self.assertIn('active SMC mode unverified', self.reader.snapshot().fan_control)
         path.unlink()
         self.assertIn('Unknown', self.reader.snapshot().fan_control)
 

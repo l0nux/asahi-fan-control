@@ -1,3 +1,3 @@
-"""Read-only thermal and fan telemetry for Asahi Linux."""
+"""Thermal telemetry and supervised fan control for Asahi Linux."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
