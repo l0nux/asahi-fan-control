@@ -1,5 +1,6 @@
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
+import Pango from 'gi://Pango';
 import St from 'gi://St';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -17,6 +18,7 @@ export default class AsahiFanControl extends Extension {
         this._snapshot = null;
         this._demo = false;
         this._ending = false;
+        this._activating = false;
         this._worker = null;
         this._job = null;
         this._rows = new Map();
@@ -27,67 +29,75 @@ export default class AsahiFanControl extends Extension {
         this._panel.add_child(this._label);
         Main.panel.addToStatusArea(this.uuid, this._panel);
         const menu = this._panel.menu;
-        this._statusItem = new PopupMenu.PopupMenuItem('Reading sensors…', {reactive: false});
-        this._statusItem.label.add_style_class_name('asahi-status');
-        menu.addMenuItem(this._statusItem);
-        this._notice = new PopupMenu.PopupMenuItem('Monitoring only', {reactive: false});
-        this._notice.label.add_style_class_name('asahi-status');
-        menu.addMenuItem(this._notice);
-        this._fanSection = new PopupMenu.PopupMenuSection();
-        menu.addMenuItem(this._fanSection);
-        const sharedItem = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
-        const sharedBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
-        this._sharedLabel = new St.Label({text: 'Both fans · Reading limits…', style_class: 'asahi-fan-label'});
+        const quick = this._card(menu, 'Fan control');
+        this._summary = new St.Label({text: 'Reading fans…', style_class: 'asahi-muted'});
+        quick.add_child(this._summary);
+        this._enableButton = this._button('Enable control', () => this._activateControl(), 'suggested-action');
+        quick.add_child(this._enableButton);
+        const presets = new St.BoxLayout({style_class: 'asahi-controls'});
+        this._presetButtons = [2000, 3000, 4000].map(rpm => {
+            const button = this._button(`${rpm} RPM`, () => this._command('set_all', {rpm}));
+            presets.add_child(button);
+            return {rpm, button};
+        });
+        quick.add_child(presets);
+        this._mode = new St.Label({text: 'Monitoring only', style_class: 'asahi-muted'});
+        quick.add_child(this._mode);
+        const actions = new St.BoxLayout({style_class: 'asahi-controls'});
+        this._autoButton = this._button('Auto', () => this._command('auto'));
+        this._endButton = this._button('End control', () => this._end());
+        actions.add_child(this._autoButton);
+        actions.add_child(this._endButton);
+        quick.add_child(actions);
+        this._feedback = new St.Label({text: '', style_class: 'asahi-feedback'});
+        this._feedback.clutter_text.set_line_wrap(true);
+        this._feedback.clutter_text.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
+        this._feedback.clutter_text.set_ellipsize(Pango.EllipsizeMode.NONE);
+        this._feedback.visible = false;
+        quick.add_child(this._feedback);
+
+        this._custom = new PopupMenu.PopupSubMenuMenuItem('Custom speeds');
+        menu.addMenuItem(this._custom);
+        const sharedBox = this._card(this._custom.menu, 'Both fans');
+        this._sharedLabel = new St.Label({text: 'Reading limits…', style_class: 'asahi-muted'});
         const sharedControls = new St.BoxLayout({style_class: 'asahi-controls'});
         this._sharedEntry = new St.Entry({hint_text: 'Shared RPM', can_focus: true, x_expand: true});
-        this._sharedButton = new St.Button({label: 'Apply to both', style_class: 'button', can_focus: true});
+        this._sharedButton = this._button('Apply', () => this._applyShared());
         sharedControls.add_child(this._sharedEntry);
         sharedControls.add_child(this._sharedButton);
         sharedBox.add_child(this._sharedLabel);
         sharedBox.add_child(sharedControls);
-        const presets = new St.BoxLayout({style_class: 'asahi-controls'});
-        this._presetButtons = [2000, 3000, 4000].map(rpm => {
-            const button = new St.Button({label: `${rpm} RPM`, style_class: 'button', can_focus: true, x_expand: true});
-            button.connect('clicked', () => this._command('set_all', {rpm}));
-            presets.add_child(button);
-            return {rpm, button};
-        });
-        sharedBox.add_child(presets);
-        sharedItem.add_child(sharedBox);
-        menu.addMenuItem(sharedItem);
-        this._sharedButton.connect('clicked', () => this._applyShared());
         this._sharedEntry.clutter_text.connect('activate', () => this._applyShared());
+        this._fanSection = new PopupMenu.PopupMenuSection();
+        this._custom.menu.addMenuItem(this._fanSection);
         this._temps = new PopupMenu.PopupSubMenuMenuItem('Temperatures');
         menu.addMenuItem(this._temps);
-        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        this._startItem = menu.addAction('Start control session…', () => this._start());
-        this._enableItem = menu.addAction('Enable manual capability…', () => {
-            this._confirmItem.visible = !this._confirmItem.visible;
-            this._message('Enabling may reload macsmc_hwmon. Manual control is marked unsafe by the kernel.');
-        });
-        this._confirmItem = menu.addAction('Confirm: enable kernel fan control', () => {
-            this._confirmItem.visible = false;
-            this._command('enable');
-        });
-        this._confirmItem.visible = false;
-        this._autoItem = menu.addAction('Return all fans to automatic', () => this._command('auto'));
-        this._endItem = menu.addAction('End control session', () => this._end());
-        this._demoItem = new PopupMenu.PopupSwitchMenuItem('Demo mode (no hardware writes)', false);
+        this._details = new PopupMenu.PopupSubMenuMenuItem('Status & settings');
+        menu.addMenuItem(this._details);
+        const details = this._card(this._details.menu, 'Session details');
+        this._statusItem = {label: this._detailLabel('Reading sensors…')};
+        this._notice = {label: this._detailLabel('Monitoring only')};
+        details.add_child(this._statusItem.label);
+        details.add_child(this._notice.label);
+        details.add_child(this._detailLabel('Targets stay until Auto or End. Return to Auto before suspend.'));
+        details.add_child(this._detailLabel('Manual control is marked unsafe by the kernel. Enabling may reload the fan driver.'));
+        this._demoItem = new PopupMenu.PopupSwitchMenuItem('Demo mode', false);
         this._demoItem.connect('toggled', (_item, value) => {
-            if (this._worker || this._ending) {
+            if (this._worker || this._ending || this._activating) {
                 this._demoItem.setToggleState(this._demo);
-                this._message('End the control session before switching demo mode.');
+                this._message('End control before switching demo mode.', true);
                 return;
             }
             this._demo = value;
+            this._snapshot = null;
             this._job?.cancel();
             this._job = null;
-            this._message(value ? 'Simulated hardware. Start a demo control session.' : 'Monitoring only');
+            this._message(value ? 'Demo mode: no hardware changes.' : 'Monitoring only');
+            this._updateControls();
             this._poll();
         });
-        menu.addMenuItem(this._demoItem);
-        menu.addAction('Refresh sensors', () => this._poll());
-        menu.addMenuItem(new PopupMenu.PopupMenuItem('Targets stay until Auto or End. Return to Auto before suspend.', {reactive: false}));
+        this._details.menu.addMenuItem(this._demoItem);
+        this._details.menu.addAction('Refresh readings', () => this._poll());
         this._timer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
             this._heartbeat();
             if (!this._job)
@@ -98,14 +108,59 @@ export default class AsahiFanControl extends Extension {
         this._poll();
     }
 
+    _button(label, action, extraClass = '') {
+        const button = new St.Button({label, style_class: `button asahi-button ${extraClass}`, can_focus: true, x_expand: true});
+        button.connect('clicked', action);
+        return button;
+    }
+
+    _card(menu, title) {
+        const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
+        const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'asahi-card', x_expand: true});
+        box.add_child(new St.Label({text: title, style_class: 'asahi-heading'}));
+        item.add_child(box);
+        menu.addMenuItem(item);
+        return box;
+    }
+
+    _detailLabel(text) {
+        const label = new St.Label({text, style_class: 'asahi-detail'});
+        label.clutter_text.set_line_wrap(true);
+        label.clutter_text.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
+        label.clutter_text.set_ellipsize(Pango.EllipsizeMode.NONE);
+        return label;
+    }
+
+    async _activateControl() {
+        if (this._activating || this._ending)
+            return;
+        const generation = this._generation;
+        this._activating = true;
+        this._updateControls();
+        try {
+            if (!this._worker)
+                await this._start();
+            if (this._alive && this._generation === generation && this._worker && !this._worker.closed && !this._worker.state.enabled)
+                await this._command('enable');
+        } finally {
+            if (this._alive && this._generation === generation) {
+                this._activating = false;
+                this._updateControls();
+            }
+        }
+    }
+
     _argv(operation) {
         return ['/usr/bin/python3', '-I', `${this.path}/bridge.py`, operation,
             ...(this._demo ? ['--demo'] : [])];
     }
 
-    _message(text) {
-        if (this._alive)
-            this._notice.label.text = safeText(text);
+    _message(text, attention = false) {
+        if (!this._alive)
+            return;
+        this._notice.label.text = safeText(text);
+        this._feedback.text = safeText(text);
+        this._feedback.visible = attention;
     }
 
     async _poll() {
@@ -124,7 +179,7 @@ export default class AsahiFanControl extends Extension {
             if (this._alive && (!job || this._job === job)) {
                 this._label.text = 'Fans —';
                 this._statusItem.label.text = 'Sensor readings unavailable (stale)';
-                this._message(error.message);
+                this._message(error.message, true);
                 this._snapshot = null;
                 for (const row of this._rows.values())
                     row.label.text = 'Reading unavailable';
@@ -152,7 +207,7 @@ export default class AsahiFanControl extends Extension {
             let row = this._rows.get(fan.path);
             if (!row) {
                 const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
-                const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
+                const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'asahi-card', x_expand: true});
                 const label = new St.Label({text: '', style_class: 'asahi-fan-label'});
                 const controls = new St.BoxLayout({style_class: 'asahi-controls'});
                 const entry = new St.Entry({hint_text: 'Target RPM', can_focus: true, x_expand: true});
@@ -167,7 +222,7 @@ export default class AsahiFanControl extends Extension {
                     const text = entry.get_text().trim();
                     const current = row.fan;
                     if (!/^\d{1,6}$/.test(text) || Number(text) < current.minimum || Number(text) > current.maximum) {
-                        this._message(`Enter ${current.minimum}–${current.maximum} RPM for ${current.label}.`);
+                        this._message(`Enter ${current.minimum}–${current.maximum} RPM for ${current.label}.`, true);
                         return;
                     }
                     const channel = /fan(\d+)_input$/.exec(current.path);
@@ -183,9 +238,9 @@ export default class AsahiFanControl extends Extension {
             const channel = /fan(\d+)_input$/.exec(fan.path)?.[1];
             const owned = this._worker?.state.manual?.[channel];
             const rpm = this._demo && owned ? owned.rpm : fan.rpm;
-            row.label.text = `${safeText(fan.label)} · ${display(rpm)} RPM · ${safeText(fan.status)}\n` +
-                `${display(fan.minimum)}–${display(fan.maximum)} RPM` +
-                (owned ? ` · Target ${owned.rpm} · ${owned.remaining === null ? 'Until Auto / End' : `${owned.remaining}s left`}` : ' · No session override');
+            row.label.text = `${safeText(fan.label)} · ${display(rpm)} RPM\n` +
+                `Range ${display(fan.minimum)}–${display(fan.maximum)}` +
+                (owned ? ` · Target ${owned.rpm}` : '');
         }
         if (fans.length === 0)
             this._statusItem.label.text = 'No macsmc fan sensors found';
@@ -221,11 +276,11 @@ export default class AsahiFanControl extends Extension {
         const bounds = this._sharedBounds();
         const text = this._sharedEntry.get_text().trim();
         if (!bounds) {
-            this._message('Shared RPM requires two fans with overlapping limits.');
+            this._message('Shared RPM requires two fans with overlapping limits.', true);
             return;
         }
         if (!/^\d{1,6}$/.test(text) || Number(text) < bounds.minimum || Number(text) > bounds.maximum) {
-            this._message(`Enter ${bounds.minimum}–${bounds.maximum} RPM for both fans.`);
+            this._message(`Enter ${bounds.minimum}–${bounds.maximum} RPM for both fans.`, true);
             return;
         }
         this._command('set_all', {rpm: Number(text)});
@@ -234,16 +289,33 @@ export default class AsahiFanControl extends Extension {
     _updateControls() {
         const worker = this._worker;
         const ready = worker && !worker.closed && !worker.busy;
-        this._startItem.setSensitive(!worker && !this._ending);
-        this._enableItem.setSensitive(Boolean(ready));
-        this._confirmItem.setSensitive(Boolean(ready));
-        this._autoItem.setSensitive(Boolean(ready && worker.state.enabled));
-        this._endItem.setSensitive(Boolean(worker));
-        this._demoItem.setSensitive(!worker && !this._ending);
+        const enabled = Boolean(ready && worker.state.enabled);
+        const manual = worker?.state.manual ?? {};
+        this._enableButton.label = this._ending ? 'Ending control…' : this._activating ? 'Enabling…' : worker?.state.enabled ? 'Control enabled' : 'Enable control';
+        const canEnable = !this._ending && !this._activating && (!worker || (ready && !worker.state.enabled));
+        this._enableButton.reactive = canEnable;
+        this._enableButton.can_focus = canEnable;
+        this._autoButton.reactive = enabled;
+        this._autoButton.can_focus = enabled;
+        this._endButton.reactive = Boolean(worker && !this._ending);
+        this._endButton.can_focus = this._endButton.reactive;
+        this._autoButton.visible = Boolean(worker || this._ending);
+        this._endButton.visible = Boolean(worker || this._ending);
+        this._demoItem.setSensitive(!worker && !this._ending && !this._activating);
+        const fans = this._snapshot?.fans.filter(fan => fan.source.startsWith('macsmc_hwmon/')) ?? [];
+        this._summary.text = (this._demo ? 'DEMO · ' : '') + (fans.length
+            ? fans.map((fan, i) => {
+                const channel = /fan(\d+)_input$/.exec(fan.path)?.[1];
+                const rpm = this._demo && manual[channel] ? manual[channel].rpm : fan.rpm;
+                return `Fan ${i + 1}  ${display(rpm)}`;
+            }).join('   ·   ') + ' RPM' : 'Readings unavailable');
+        this._mode.text = this._ending ? 'Returning to automatic…' : this._activating ? 'Waiting for control…'
+            : Object.keys(manual).length ? 'Manual · Until Auto or End'
+            : worker?.state.enabled ? 'Ready · Choose a speed for both fans' : 'Enable control to choose a speed';
         const sharedBounds = this._sharedBounds();
         this._sharedLabel.text = sharedBounds
-            ? `Both fans · ${sharedBounds.minimum}–${sharedBounds.maximum} RPM`
-            : 'Both fans · Shared RPM unavailable';
+            ? `Range ${sharedBounds.minimum}–${sharedBounds.maximum} RPM`
+            : 'Shared RPM unavailable';
         const sharedReady = Boolean(sharedBounds && ready && worker.state.enabled);
         this._sharedButton.reactive = sharedReady;
         this._sharedButton.can_focus = sharedReady;
@@ -252,6 +324,10 @@ export default class AsahiFanControl extends Extension {
             const sensitive = sharedReady && rpm >= sharedBounds.minimum && rpm <= sharedBounds.maximum;
             button.reactive = sensitive;
             button.can_focus = sensitive;
+            if (manual['1']?.rpm === rpm && manual['2']?.rpm === rpm)
+                button.add_style_pseudo_class('checked');
+            else
+                button.remove_style_pseudo_class('checked');
         }
         for (const row of this._rows.values()) {
             const bounds = row.fan.minimum > 0 && row.fan.maximum >= row.fan.minimum;
@@ -279,7 +355,7 @@ export default class AsahiFanControl extends Extension {
             this._message('Control session ready. Enable capability before applying an RPM target.');
         } catch (error) {
             if (this._alive && (!worker || this._worker === worker)) {
-                this._message(error.message);
+                this._message(error.message, true);
                 await this._end(false);
             }
         } finally {
@@ -301,7 +377,7 @@ export default class AsahiFanControl extends Extension {
                 this._message(response.message);
         } catch (error) {
             if (this._alive && this._worker === worker)
-                this._message(error.message);
+                this._message(error.message, true);
         } finally {
             if (this._alive && this._worker === worker) {
                 if (worker.closed)
@@ -316,7 +392,7 @@ export default class AsahiFanControl extends Extension {
     async _heartbeat() {
         const worker = this._worker;
         if (worker?.closed && !this._ending) {
-            this._message('Worker disconnected. Recovery was requested; check fan status.');
+            this._message('Worker disconnected. Recovery was requested; check fan status.', true);
             await this._end(false);
             return;
         }
@@ -327,12 +403,12 @@ export default class AsahiFanControl extends Extension {
             if (!this._alive || this._worker !== worker)
                 return;
             if (response.events?.length)
-                this._message(response.events.at(-1));
+                this._message(response.events.at(-1), true);
             if (this._snapshot)
                 this._render(this._snapshot);
         } catch (error) {
             if (this._alive && this._worker === worker) {
-                this._message(error.message);
+                this._message(error.message, true);
                 await this._end(false);
             }
         }
@@ -345,7 +421,6 @@ export default class AsahiFanControl extends Extension {
         this._worker = null;
         const generation = this._generation;
         this._ending = true;
-        this._confirmItem.visible = false;
         worker.close();
         if (showMessage)
             this._message('Ending session; waiting for automatic-return requests…');
@@ -355,7 +430,7 @@ export default class AsahiFanControl extends Extension {
             return;
         this._ending = false;
         if (!outcome.ok || showMessage)
-            this._message(outcome.ok ? 'Session ended. Recovery requests completed; physical SMC mode is unverified.' : outcome.message);
+            this._message(outcome.ok ? 'Session ended. Recovery requests completed; physical SMC mode is unverified.' : outcome.message, !outcome.ok);
         this._updateControls();
     }
 

@@ -25,17 +25,25 @@ Only GNOME 51 is currently advertised because that is the tested version.
 
 Click **Fans** in the top panel. Monitoring requires no authentication.
 
-1. Choose **Start control session…** and authenticate in the system dialog.
-2. Choose **Enable manual capability…**, read the notice, then confirm.
-   This may reload macsmc_hwmon; no RPM is applied by enabling alone.
-3. Click **2000 RPM**, **3000 RPM** or **4000 RPM** to set both fans together.
-   Presets outside either fan's limits are disabled. Alternatively enter a
-   **Shared RPM** and click **Apply to both**, or use each fan's **Apply** field.
-   Shared RPM uses the intersection of the two fan ranges. Both receive the
-   same target; measured speeds may differ while settling. Individual fields
-   remain independent if you change one later.
-   Targets stay active until Auto or session end, with no two-minute expiry.
-4. Use **Return all fans to automatic** or **End control session** when done.
+The main card puts **Enable control** and **2000 / 3000 / 4000 RPM** first.
+
+1. Click **Enable control** and authenticate in the system dialog. This starts
+   the supervised session and enables the driver if needed; it applies no RPM.
+2. Click a preset to set both fans together. The active shared preset is
+   highlighted. Presets outside either fan's range are disabled.
+3. Use **Auto** to return the fans to firmware control, or **End control** to
+   return them and close the session. Targets have no two-minute expiry.
+
+Details stay collapsed until you open a section:
+
+- **Custom speeds**: one card for both fans and one for each fan, each with its
+  supported range, RPM field and **Apply** button. Shared RPM must fit both
+  ranges. Individual fan edits remain independent.
+- **Temperatures**: available sensor readings.
+- **Status & settings**: driver state, operation details, demo mode and refresh.
+
+Errors appear on the main card even when the details are closed. During a slow
+enable operation, **End control** stays available to disconnect the session.
 
 Enable **Demo mode** before starting a session to try the complete workflow
 without authentication or hardware writes. End the session before changing
@@ -48,7 +56,7 @@ The terminal's Enable handler calls a synchronous request and waits for module
 reload. The new extension never reads sysfs or waits for control on GNOME's main
 loop: telemetry runs in a separate read-only process; worker reads, writes and
 exit notifications all use GIO async APIs. Only one command is in flight, its
-state is visible, and **End control session** stays available while it runs.
+state is visible, and **End control** stays available while it runs.
 The worker starts a fresh heartbeat window after a slow operation returns.
 
 The authentication timeout and enable-response timeout are 60 seconds. Ending

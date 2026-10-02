@@ -10,6 +10,9 @@ ext.mkdir(parents=True)
 with zipfile.ZipFile(sys.argv[1]) as z: z.extractall(ext)
 (ext/'extension.js').rename(ext/'subject.js')
 (ext/'extension.js').write_text('''import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
+import Shell from 'gi://Shell';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import Subject from './subject.js';
 function delay(ms) { return new Promise(resolve => GLib.timeout_add(GLib.PRIORITY_DEFAULT,ms,()=>{resolve();return GLib.SOURCE_REMOVE;})); }
 export default class Test extends Subject {
@@ -17,16 +20,35 @@ export default class Test extends Subject {
   super.enable();
   this.test().catch(e => GLib.file_set_contents(GLib.getenv('ASAHI_TEST_RESULT'), 'FAIL '+e.message+' '+e.stack));
  }
+ async capture(name) {
+  const folder=GLib.getenv('ASAHI_TEST_CAPTURE');
+  if(!folder) return;
+  this._custom.menu.close();
+  Main.overview.hide();
+  this._panel.menu.open();
+  await delay(400);
+  const file=Gio.File.new_for_path(`${folder}/${name}.png`);
+  const stream=file.replace(null,false,Gio.FileCreateFlags.REPLACE_DESTINATION,null);
+  const shot=new Shell.Screenshot();
+  try {
+   await new Promise((resolve,reject)=>shot.screenshot(false,stream,(source,result)=>{
+    try { source.screenshot_finish(result);resolve(); } catch(error) { reject(error); }
+   }));
+  } finally { stream.close(null); }
+ }
  async test() {
   await delay(1200);
   this._demo = true;
   this._job?.cancel(); this._job=null;
   await this._poll();
   if(this._rows.size!==2) throw new Error('Expected two demo fan rows');
-  await this._start();
+  if(this._custom.menu.isOpen || this._temps.menu.isOpen || this._details.menu.isOpen) throw new Error('Details should start collapsed');
+  await this.capture('monitoring');
+  this._enableButton.emit('clicked', 1);
+  await delay(500);
   if(!this._worker || this._worker.closed) throw new Error('No control worker');
-  await this._command('enable');
-  if(!this._worker.state.enabled) throw new Error('Enable failed');
+  if(!this._worker.state.enabled || this._activating) throw new Error('One-click enable failed');
+  this._custom.menu.open();
   const first=[...this._rows.values()][0];
   first.entry.set_text('2500');
   first.button.emit('clicked', 1);
@@ -50,12 +72,17 @@ export default class Test extends Subject {
    button.emit('clicked', 1);
    await delay(300);
    for(const fan of ['1','2']) if(this._worker.state.manual[fan]?.rpm!==rpm) throw new Error('Preset failed '+rpm);
+   if(!button.has_style_pseudo_class('checked')) throw new Error('Selected preset not highlighted');
   }
-  await this._command('auto');
+  await this.capture('presets');
+  this._autoButton.emit('clicked', 1);
+  await delay(250);
   if(Object.keys(this._worker.state.manual).length) throw new Error('Auto failed');
   await this._command('set_all', {rpm:3000});
-  await this._end();
-  if(this._ending) throw new Error('Session stuck ending');
+  this._endButton.emit('clicked', 1);
+  await delay(350);
+  if(this._ending || this._worker) throw new Error('Session stuck ending');
+  if(this._enableButton.label!=='Enable control' || !this._enableButton.reactive) throw new Error('Enable not restored');
   const rows=this._rows.size;
   super.disable();
   if(this._panel || this._worker || this._timer || this._job) throw new Error('Disable leak');
@@ -77,6 +104,7 @@ launcher='import os,sys; fd=int(sys.argv[1]); os.dup2(fd,3); os.set_inheritable(
 buslog=open(root/'bus.log','w')
 bus=subprocess.Popen([sys.executable,'-c',launcher,str(fd),str(config)],pass_fds=(fd,),stdout=buslog,stderr=buslog)
 env={**os.environ, 'XDG_RUNTIME_DIR':str(root/'runtime'),'XDG_DATA_HOME':str(root/'data'),'XDG_CONFIG_HOME':str(root/'config'),'DBUS_SESSION_BUS_ADDRESS':f'unix:path={root}/runtime/bus','GSETTINGS_BACKEND':'keyfile','LIBGL_ALWAYS_SOFTWARE':'1','ASAHI_TEST_RESULT':str(root/'result.txt')}
+if '--screenshots' in sys.argv[2:]: env['ASAHI_TEST_CAPTURE']=str(root)
 for name in ('WAYLAND_DISPLAY','DISPLAY'):env.pop(name,None)
 print(root,flush=True)
 try:
@@ -84,7 +112,7 @@ try:
     with open(root/'shell.log','w') as log:
         shell=subprocess.Popen(['/usr/bin/gnome-shell','--headless','--wayland','--virtual-monitor','1280x800','--no-x11'],env=env,stdout=log,stderr=log)
     try:
-        time.sleep(8)
+        time.sleep(12 if '--screenshots' in sys.argv[2:] else 8)
         result=subprocess.run(['gdbus','call','--session','--dest','org.gnome.Shell','--object-path','/org/gnome/Shell','--method','org.gnome.Shell.Extensions.GetExtensionInfo',uuid],env=env,capture_output=True,text=True,timeout=10)
         print(result.stdout,result.stderr,flush=True)
         outcome = (root/'result.txt').read_text() if (root/'result.txt').exists() else 'NO RESULT'
