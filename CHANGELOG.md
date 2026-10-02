@@ -1,5 +1,16 @@
 # Release notes
 
+## 0.5.0
+
+- Simplified the GNOME menu to a primary control card with Enable control,
+  three shared RPM presets, active-preset highlighting, Auto and End control.
+- Enable control now starts authentication and enables capability in one flow;
+  it still applies no speed until the user chooses one.
+- Moved individual/shared RPM fields into Custom speeds and grouped
+  temperatures and status/settings into collapsed sections. Errors remain
+  visible on the main card.
+- Verified the actual panel controls in an isolated GNOME Shell 51 session.
+
 ## 0.4.0
 
 - GNOME manual targets now stay active until Auto or End control session;

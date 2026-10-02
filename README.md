@@ -1,11 +1,13 @@
 # Asahi Fan Control
 
-**GNOME Shell 51 extension available in version 0.4.0.** Monitor temperatures
+**GNOME Shell 51 extension available in version 0.5.0.** Monitor temperatures
 and set supervised fan targets from the top panel, with asynchronous operations
 that keep GNOME responsive during driver enabling. Targets stay active until
-**Return all fans to automatic** or **End control session**. Use the **2000 RPM**,
+**Auto** or **End control**. Use the **2000 RPM**,
 **3000 RPM** or **4000 RPM** buttons to set both fans together, or enter a shared
-RPM within their overlapping limits. See the
+RPM within their overlapping limits under **Custom speeds**. The main card keeps
+**Enable control** and the presets in view, with temperatures and settings in
+collapsible sections. See the
 [GNOME installation and usage guide](docs/GNOME.md).
 
 ```sh
