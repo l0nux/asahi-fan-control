@@ -13,7 +13,8 @@ when it is outside the advertised RPM interval. Consequently this application
 refuses control if the minimum is zero or missing. It never interprets a zero
 command as "stop the fan".
 
-Read-back checks the setpoint within one RPM to accommodate conversion rounding;
+Read-back polls for at most 1.5 seconds and checks the setpoint within one RPM
+to accommodate asynchronous SMC updates and conversion rounding;
 actual fan speed takes time to settle. Automatic-mode acceptance is the success
 of the zero write. The driver does not expose the SMC mode, so neither target
 zero nor falling RPM is used as proof of firmware mode.
@@ -81,3 +82,8 @@ fan-control verification on a particular machine.
 
 The Bash project helped identify the relevant operations. Its module reload and
 fallback-limit behavior was not used as the application's control protocol.
+
+An attended real-hardware run also verified physical RPM response, explicit Auto
+acknowledgement, normal hold expiry and EOF cleanup. Measurements stay in the
+ignored local report. Use `python3 tools/validate-hardware.py --real` to repeat
+an attended upward-RPM test with 20-second holds and system authentication.

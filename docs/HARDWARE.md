@@ -41,7 +41,7 @@ edited. See [control design](CONTROL.md) for the write protocol and limitations.
 A writable target or a nonzero setpoint does not prove the current SMC policy.
 
 Manual control uses a separate worker with bounded holds and automatic-return
-requests. Real hardware validation is still needed; process recovery cannot
+requests. An attended hardware cycle has been validated locally; process recovery cannot
 cover every crash, suspend state or competing service. This project does not promise hardware fail-safe behavior.
 
 ## Primary references
