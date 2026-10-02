@@ -35,6 +35,28 @@ export default class AsahiFanControl extends Extension {
         menu.addMenuItem(this._notice);
         this._fanSection = new PopupMenu.PopupMenuSection();
         menu.addMenuItem(this._fanSection);
+        const sharedItem = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
+        const sharedBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
+        this._sharedLabel = new St.Label({text: 'Both fans · Reading limits…', style_class: 'asahi-fan-label'});
+        const sharedControls = new St.BoxLayout({style_class: 'asahi-controls'});
+        this._sharedEntry = new St.Entry({hint_text: 'Shared RPM', can_focus: true, x_expand: true});
+        this._sharedButton = new St.Button({label: 'Apply to both', style_class: 'button', can_focus: true});
+        sharedControls.add_child(this._sharedEntry);
+        sharedControls.add_child(this._sharedButton);
+        sharedBox.add_child(this._sharedLabel);
+        sharedBox.add_child(sharedControls);
+        const presets = new St.BoxLayout({style_class: 'asahi-controls'});
+        this._presetButtons = [2000, 3000, 4000].map(rpm => {
+            const button = new St.Button({label: `${rpm} RPM`, style_class: 'button', can_focus: true, x_expand: true});
+            button.connect('clicked', () => this._command('set_all', {rpm}));
+            presets.add_child(button);
+            return {rpm, button};
+        });
+        sharedBox.add_child(presets);
+        sharedItem.add_child(sharedBox);
+        menu.addMenuItem(sharedItem);
+        this._sharedButton.connect('clicked', () => this._applyShared());
+        this._sharedEntry.clutter_text.connect('activate', () => this._applyShared());
         this._temps = new PopupMenu.PopupSubMenuMenuItem('Temperatures');
         menu.addMenuItem(this._temps);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -65,7 +87,7 @@ export default class AsahiFanControl extends Extension {
         });
         menu.addMenuItem(this._demoItem);
         menu.addAction('Refresh sensors', () => this._poll());
-        menu.addMenuItem(new PopupMenu.PopupMenuItem('Targets expire after 120 s. Return to Auto before suspend.', {reactive: false}));
+        menu.addMenuItem(new PopupMenu.PopupMenuItem('Targets stay until Auto or End. Return to Auto before suspend.', {reactive: false}));
         this._timer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
             this._heartbeat();
             if (!this._job)
@@ -134,7 +156,7 @@ export default class AsahiFanControl extends Extension {
                 const label = new St.Label({text: '', style_class: 'asahi-fan-label'});
                 const controls = new St.BoxLayout({style_class: 'asahi-controls'});
                 const entry = new St.Entry({hint_text: 'Target RPM', can_focus: true, x_expand: true});
-                const button = new St.Button({label: 'Apply 120 s', style_class: 'button', can_focus: true});
+                const button = new St.Button({label: 'Apply', style_class: 'button', can_focus: true});
                 controls.add_child(entry);
                 controls.add_child(button);
                 box.add_child(label);
@@ -163,7 +185,7 @@ export default class AsahiFanControl extends Extension {
             const rpm = this._demo && owned ? owned.rpm : fan.rpm;
             row.label.text = `${safeText(fan.label)} · ${display(rpm)} RPM · ${safeText(fan.status)}\n` +
                 `${display(fan.minimum)}–${display(fan.maximum)} RPM` +
-                (owned ? ` · Target ${owned.rpm} · ${owned.remaining}s left` : ' · No session override');
+                (owned ? ` · Target ${owned.rpm} · ${owned.remaining === null ? 'Until Auto / End' : `${owned.remaining}s left`}` : ' · No session override');
         }
         if (fans.length === 0)
             this._statusItem.label.text = 'No macsmc fan sensors found';
@@ -184,6 +206,31 @@ export default class AsahiFanControl extends Extension {
         this._updateControls();
     }
 
+    _sharedBounds() {
+        const fans = this._snapshot?.fans.filter(fan => fan.source.startsWith('macsmc_hwmon/')) ?? [];
+        if (fans.length !== 2 || !fans.some(fan => /\/fan1_input$/.test(fan.path)) ||
+            !fans.some(fan => /\/fan2_input$/.test(fan.path)) ||
+            fans.some(fan => !Number.isFinite(fan.minimum) || !Number.isFinite(fan.maximum) || fan.minimum <= 0))
+            return null;
+        const minimum = Math.max(...fans.map(fan => fan.minimum));
+        const maximum = Math.min(...fans.map(fan => fan.maximum));
+        return minimum <= maximum ? {minimum, maximum} : null;
+    }
+
+    _applyShared() {
+        const bounds = this._sharedBounds();
+        const text = this._sharedEntry.get_text().trim();
+        if (!bounds) {
+            this._message('Shared RPM requires two fans with overlapping limits.');
+            return;
+        }
+        if (!/^\d{1,6}$/.test(text) || Number(text) < bounds.minimum || Number(text) > bounds.maximum) {
+            this._message(`Enter ${bounds.minimum}–${bounds.maximum} RPM for both fans.`);
+            return;
+        }
+        this._command('set_all', {rpm: Number(text)});
+    }
+
     _updateControls() {
         const worker = this._worker;
         const ready = worker && !worker.closed && !worker.busy;
@@ -193,6 +240,19 @@ export default class AsahiFanControl extends Extension {
         this._autoItem.setSensitive(Boolean(ready && worker.state.enabled));
         this._endItem.setSensitive(Boolean(worker));
         this._demoItem.setSensitive(!worker && !this._ending);
+        const sharedBounds = this._sharedBounds();
+        this._sharedLabel.text = sharedBounds
+            ? `Both fans · ${sharedBounds.minimum}–${sharedBounds.maximum} RPM`
+            : 'Both fans · Shared RPM unavailable';
+        const sharedReady = Boolean(sharedBounds && ready && worker.state.enabled);
+        this._sharedButton.reactive = sharedReady;
+        this._sharedButton.can_focus = sharedReady;
+        this._sharedEntry.reactive = sharedReady;
+        for (const {rpm, button} of this._presetButtons) {
+            const sensitive = sharedReady && rpm >= sharedBounds.minimum && rpm <= sharedBounds.maximum;
+            button.reactive = sensitive;
+            button.can_focus = sensitive;
+        }
         for (const row of this._rows.values()) {
             const bounds = row.fan.minimum > 0 && row.fan.maximum >= row.fan.minimum;
             const sensitive = Boolean(this._snapshot && ready && worker.state.enabled && bounds);

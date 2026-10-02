@@ -34,7 +34,7 @@ def main(argv=None) -> int:
     group.add_argument('--auto', action='store_true', help='request firmware control for all macsmc fans')
     parser.add_argument('--control', action='store_true', help='enable control keys in the TUI (requires root except in demo)')
     parser.add_argument('--enable-control', action='store_true', help='explicitly reload macsmc_hwmon with fan_control=1 when disabled')
-    parser.add_argument('--hold-seconds', type=hold_duration, default=120, metavar='SECONDS', help='manual hold duration, 5..600 seconds (default 120)')
+    parser.add_argument('--hold-seconds', type=hold_duration, default=120, metavar='SECONDS', help='manual hold duration, 0 for session lifetime or 5..600 seconds (default 120)')
     parser.add_argument('--interval', type=polling_interval, default=1.0, metavar='SECONDS')
     args = parser.parse_args(argv)
     wants_control = args.control or args.enable_control or args.set is not None or args.auto

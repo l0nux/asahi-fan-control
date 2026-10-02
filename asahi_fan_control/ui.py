@@ -100,7 +100,7 @@ def control_lines(controller, snapshot, selected):
     for index, fan in enumerate(fans):
         channel = re.search(r'fan(\d+)_input$', fan.path)
         entry = controller.state.get('manual', {}).get(channel.group(1)) if channel else None
-        state = (f"{entry['rpm']} RPM / {entry['remaining']}s left" if entry else 'No session override')
+        state = (f"{entry['rpm']} RPM / " + ("until Auto / End" if entry['remaining'] is None else f"{entry['remaining']}s left") if entry else 'No session override')
         lines.append(f"{'>' if index == selected else ' '} {fan.label}: {state}")
     lines += ['', 'Enable reloads only macsmc_hwmon, and verifies the parameter and target access.',
               'Auto uses the driver zero-target command; it does not unload the driver.',

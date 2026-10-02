@@ -10,7 +10,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from asahi_fan_control.control import Backend, ControlError, acquire_lock, dispatch, now, read_number, write_number
+from asahi_fan_control.control import Backend, DemoBackend, ControlError, hold_duration, acquire_lock, dispatch, now, read_number, write_number
 
 
 class BackendTests(unittest.TestCase):
@@ -212,6 +212,84 @@ class BackendTests(unittest.TestCase):
         fd = acquire_lock(path)
         os.close(fd)
 
+    def test_session_targets_survive_elapsed_time_and_auto_still_works(self):
+        self.backend.hold_seconds = 0
+        self.backend.set_all(2500)
+        with patch('asahi_fan_control.control.now', return_value=now() + 86400):
+            self.backend.tick()
+            state = self.backend.status()
+        self.assertEqual(state['manual'], {str(fan): {'rpm': 2500, 'remaining': None} for fan in (1, 2)})
+        self.assertEqual(state['events'], [])
+        self.backend.auto()
+        self.assertEqual(self.writes, [2500, 2500, 0, 0])
+
+    def test_session_target_feedback_failure_still_recovers(self):
+        self.backend.hold_seconds = 0
+        self.backend.set(1, 2500)
+        self.put('fan1_fault', 1)
+        self.backend.tick()
+        self.assertEqual(self.writes, [2500, 0])
+
+    def test_session_target_verification_is_still_bounded(self):
+        self.backend.hold_seconds = 0
+        self.test_readback_mismatch_restores()
+
+    def test_shared_speed_protocol_applies_both(self):
+        result = dispatch(self.backend, {'action': 'set_all', 'rpm': 3000})
+        self.assertTrue(result['ok'])
+        self.assertEqual([fan['rpm'] for fan in result['manual'].values()], [3000, 3000])
+        self.assertEqual(self.writes, [3000, 3000])
+
+    def test_shared_speed_checks_second_fan_before_first_write(self):
+        self.put('fan2_min', 3000)
+        with self.assertRaises(ControlError):
+            self.backend.set_all(2500)
+        self.assertEqual(self.writes, [])
+        self.put('fan2_target', 1800).chmod(0o444)
+        with self.assertRaises(ControlError):
+            self.backend.set_all(3500)
+        self.assertEqual(self.writes, [])
+
+    def test_shared_speed_partial_failure_recovers_both(self):
+        calls = 0
+        def fail_second(fd, value):
+            nonlocal calls
+            os.ftruncate(fd, 0)
+            write_number(fd, value)
+            if value:
+                calls += 1
+                if calls == 2:
+                    raise OSError('second fan failed after write')
+        with patch('asahi_fan_control.control.write_number', side_effect=fail_second):
+            with self.assertRaisesRegex(ControlError, 'Shared RPM failed'):
+                self.backend.set_all(3000)
+        self.assertEqual(self.backend.owned, {})
+        for fan in (1, 2):
+            self.assertEqual((self.device / f'fan{fan}_target').read_text(), '0\n')
+
+    def test_shared_speed_missing_pair_is_rejected(self):
+        (self.device / 'fan2_target').unlink()
+        with self.assertRaises(ControlError):
+            self.backend.set_all(3000)
+        self.assertEqual(self.writes, [])
+
+    def test_demo_shared_limits_and_session_lifetime(self):
+        demo = DemoBackend(hold_seconds=0)
+        with self.assertRaises(ControlError):
+            demo.set_all(3000)
+        demo.enable()
+        for rpm in (1400, 5400, True, '3000'):
+            with self.assertRaises(ControlError):
+                demo.set_all(rpm)
+        self.assertEqual(demo.manual, {})
+        demo.set_all(3000)
+        with patch('asahi_fan_control.control.now', return_value=now() + 86400):
+            demo.tick()
+            self.assertEqual(demo.status()['manual']['2'], {'rpm': 3000, 'remaining': None})
+        demo.close()
+        self.assertEqual(demo.manual, {})
+        self.assertEqual(hold_duration('0'), 0)
+
     def test_unknown_worker_command_is_rejected(self):
         with self.assertRaises(ControlError):
             dispatch(self.backend, {'action': 'shell', 'command': 'anything'})
@@ -246,7 +324,7 @@ def fixture_write(fd, value):
     write(fd, value)
 # Use only fixtures: mocking the privilege check grants no OS privileges.
 with patch.object(c, 'Backend', FixtureBackend), patch.object(c, 'acquire_lock', lambda: os.open(root/'lock', os.O_RDWR|os.O_CREAT, 0o600)), patch.object(c.os, 'geteuid', return_value=0), patch.object(c, 'write_number', fixture_write):
-    sys.exit(c.worker(False, 5, lease_seconds=0.5))
+    sys.exit(c.worker(False, 0, lease_seconds=0.5))
 '''
         process = subprocess.Popen([sys.executable, '-c', code, str(root)], stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)

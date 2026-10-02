@@ -38,7 +38,7 @@ class CliTests(unittest.TestCase):
     def test_control_argument_validation(self):
         for args in [('--json', '--control'), ('--auto', '--enable-control'),
                      ('--set', '1', '0'), ('--set', '../bad', '2000'),
-                     ('--hold-seconds', '0'), ('--hold-seconds', '601')]:
+                     ('--hold-seconds', '1'), ('--hold-seconds', '601')]:
             with self.subTest(args=args):
                 result = self.run_cli('--demo', *args)
                 self.assertEqual(result.returncode, 2)

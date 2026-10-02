@@ -30,7 +30,7 @@ def main():
         os.setsid()
     except PermissionError:
         pass  # Already a session leader.
-    return worker(args.demo, 120)
+    return worker(args.demo, 0)
 
 
 if __name__ == '__main__':

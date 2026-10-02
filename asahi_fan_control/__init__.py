@@ -1,3 +1,3 @@
 """Thermal telemetry and supervised fan control for Asahi Linux."""
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"

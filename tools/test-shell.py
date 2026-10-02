@@ -34,8 +34,26 @@ export default class Test extends Subject {
   if(this._worker.state.manual['1']?.rpm!==2500) throw new Error('Set failed');
   await this._command('set', {fan:2,rpm:2700});
   if(this._worker.state.manual['2']?.rpm!==2700) throw new Error('Second fan failed');
+  if(this._worker.state.manual['1'].remaining!==null) throw new Error('Unexpected target expiry');
+  this._sharedEntry.set_text('3100');
+  this._sharedButton.emit('clicked', 1);
+  await delay(300);
+  for(const fan of ['1','2']) if(this._worker.state.manual[fan]?.rpm!==3100) throw new Error('Shared field failed');
+  await this._poll();
+  if(this._sharedEntry.get_text()!=='3100') throw new Error('Shared entry lost during refresh');
+  this._sharedEntry.set_text('1400');
+  this._sharedButton.emit('clicked', 1);
+  await delay(100);
+  if(this._worker.state.manual['1'].rpm!==3100) throw new Error('Invalid shared RPM applied');
+  for(const {rpm,button} of this._presetButtons) {
+   if(!button.reactive) throw new Error('Preset unavailable');
+   button.emit('clicked', 1);
+   await delay(300);
+   for(const fan of ['1','2']) if(this._worker.state.manual[fan]?.rpm!==rpm) throw new Error('Preset failed '+rpm);
+  }
   await this._command('auto');
   if(Object.keys(this._worker.state.manual).length) throw new Error('Auto failed');
+  await this._command('set_all', {rpm:3000});
   await this._end();
   if(this._ending) throw new Error('Session stuck ending');
   const rows=this._rows.size;
@@ -45,7 +63,7 @@ export default class Test extends Subject {
   await delay(500);
   if(!this._panel || !this._timer) throw new Error('Re-enable failed');
   super.disable();
-  GLib.file_set_contents(GLib.getenv('ASAHI_TEST_RESULT'), 'PASS: Shell 51 panel, '+rows+' fan rows, enable, set both, auto, end, disable, re-enable');
+  GLib.file_set_contents(GLib.getenv('ASAHI_TEST_RESULT'), 'PASS: Shell 51 panel, '+rows+' fan rows, enable, individual/shared targets, three presets, no expiry, auto, end, disable, re-enable');
  }
 }
 ''')

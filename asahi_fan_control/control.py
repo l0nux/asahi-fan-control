@@ -1,4 +1,4 @@
-"""Bounded macsmc fan control, owned by an independent worker process.
+"""Supervised macsmc fan control, owned by an independent worker process.
 
 Protocol: macsmc-hwmon accepts an in-range RPM as manual control and zero as
 return-to-firmware, provided fan_min > 0. No persistent configuration is written.
@@ -54,7 +54,7 @@ class OwnedFan:
     fd: int
     directory: Path
     rpm: int
-    deadline: float
+    deadline: float | None
     started: float
 
 
@@ -172,13 +172,15 @@ class Backend:
             self.owned[fan] = OwnedFan(fd, device, rpm, 0, now())
         owned = self.owned[fan]
         owned.rpm = rpm
-        owned.deadline = now() + self.hold_seconds
+        owned.deadline = now() + self.hold_seconds if self.hold_seconds else None
         try:
             write_number(owned.fd, rpm)
             # SMC setpoints may become visible after the write has returned.
             # Keep ownership throughout this bounded settling interval so all
             # failures still take the automatic-return path below.
-            verify_until = min(owned.deadline, now() + 1.5)
+            verify_until = now() + 1.5
+            if owned.deadline is not None:
+                verify_until = min(owned.deadline, verify_until)
             while True:
                 actual = read_number(device / f'fan{fan}_target')
                 if abs(actual - rpm) <= 1:
@@ -193,7 +195,37 @@ class Backend:
             except ControlError as recovery:
                 raise ControlError(f'{error}; automatic recovery FAILED: {recovery}') from error
             raise ControlError(f'{error}; automatic request accepted.') from error
-        return f'Fan {fan}: target {rpm} RPM verified; automatic return in {self.hold_seconds}s.'
+        duration = f'automatic return in {self.hold_seconds}s' if self.hold_seconds else 'held until Auto or session end'
+        return f'Fan {fan}: target {rpm} RPM verified; {duration}.'
+
+    def set_all(self, rpm: int) -> str:
+        """Set the two fans to one target; recover both if either application fails."""
+        integer(rpm, 'RPM')
+        if not self.enabled():
+            raise ControlError('Kernel control is disabled. Enable control first.')
+        device = self.device()
+        if self.targets(device) != [1, 2]:
+            raise ControlError('Shared RPM requires exactly two fan targets (1 and 2).')
+        # Validate both channels and access before changing either target.
+        for fan in (1, 2):
+            low, high = self.bounds(device, fan)
+            if not low <= rpm <= high:
+                raise ControlError(f'Fan {fan} requires {low}..{high} RPM; shared RPM must fit both fans.')
+            self.check_feedback(device, fan)
+            if fan in self.owned and self.owned[fan].directory != device:
+                raise ControlError('Device changed during control; restore automatic mode first.')
+            fd = self.open_target(device, fan)
+            os.close(fd)
+        try:
+            for fan in (1, 2):
+                self.set(fan, rpm)
+        except (OSError, ControlError) as error:
+            try:
+                self.auto()
+            except ControlError as recovery:
+                raise ControlError(f'Shared RPM failed: {error}; automatic recovery FAILED: {recovery}') from error
+            raise ControlError(f'Shared RPM failed: {error}; session automatic requests accepted.') from error
+        return f'Both fans: target {rpm} RPM verified.'
 
     @staticmethod
     def check_feedback(device: Path, fan: int) -> int:
@@ -258,7 +290,7 @@ class Backend:
                     reason = 'target changed outside this session'
             except ControlError as error:
                 reason = str(error)
-            if current_time >= owned.deadline:
+            if owned.deadline is not None and current_time >= owned.deadline:
                 reason = 'manual hold expired'
             if reason:
                 self.auto(fan)
@@ -267,7 +299,7 @@ class Backend:
     def status(self) -> dict:
         events, self.events = self.events, []
         return {'enabled': self.enabled(), 'manual': {
-            str(fan): {'rpm': owned.rpm, 'remaining': max(0, math.ceil(owned.deadline - now()))}
+            str(fan): {'rpm': owned.rpm, 'remaining': None if owned.deadline is None else max(0, math.ceil(owned.deadline - now()))}
             for fan, owned in self.owned.items()}, 'events': events}
 
     def close(self) -> None:
@@ -294,8 +326,18 @@ class DemoBackend:
         bounds = {1: (1350, 5349), 2: (1522, 5777)}
         if fan not in bounds or not bounds[fan][0] <= rpm <= bounds[fan][1]:
             raise ControlError('DEMO: fan or RPM is outside its advertised range.')
-        self.manual[str(fan)] = {'rpm': rpm, 'deadline': now() + self.hold_seconds}
+        self.manual[str(fan)] = {'rpm': rpm, 'deadline': now() + self.hold_seconds if self.hold_seconds else None}
         return f'DEMO: Fan {fan} set to {rpm} RPM.'
+
+    def set_all(self, rpm):
+        integer(rpm, 'RPM')
+        if not self.active:
+            raise ControlError('DEMO: enable control first.')
+        if not 1522 <= rpm <= 5349:
+            raise ControlError('DEMO: shared RPM requires 1522..5349 RPM.')
+        for fan in (1, 2):
+            self.set(fan, rpm)
+        return f'DEMO: both fans set to {rpm} RPM.'
 
     def auto(self, fan=None, all_fans=False):
         if fan is None:
@@ -306,14 +348,14 @@ class DemoBackend:
 
     def tick(self):
         for fan, data in list(self.manual.items()):
-            if data['deadline'] <= now():
+            if data['deadline'] is not None and data['deadline'] <= now():
                 self.manual.pop(fan)
                 self.events.append(f'DEMO: Fan {fan} hold expired; returned to automatic.')
 
     def status(self):
         events, self.events = self.events, []
         return {'enabled': self.active, 'manual': {
-            fan: {'rpm': data['rpm'], 'remaining': max(0, math.ceil(data['deadline'] - now()))}
+            fan: {'rpm': data['rpm'], 'remaining': None if data['deadline'] is None else max(0, math.ceil(data['deadline'] - now()))}
             for fan, data in self.manual.items()}, 'events': events}
 
     def close(self):
@@ -340,6 +382,8 @@ def dispatch(backend, request: dict) -> dict:
         message = backend.enable()
     elif action == 'set':
         message = backend.set(request.get('fan'), request.get('rpm'))
+    elif action == 'set_all':
+        message = backend.set_all(request.get('rpm'))
     elif action == 'auto':
         message = backend.auto(all_fans=True)
     elif action != 'status':
@@ -483,8 +527,8 @@ def hold_duration(raw: str) -> int:
         value = int(raw)
     except ValueError as error:
         raise argparse.ArgumentTypeError('hold duration must be an integer') from error
-    if not 5 <= value <= 600:
-        raise argparse.ArgumentTypeError('hold duration must be between 5 and 600 seconds')
+    if value != 0 and not 5 <= value <= 600:
+        raise argparse.ArgumentTypeError('hold duration must be 0 (until session end) or between 5 and 600 seconds')
     return value
 
 

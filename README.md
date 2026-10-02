@@ -1,8 +1,11 @@
 # Asahi Fan Control
 
-**GNOME Shell 51 extension available in version 0.3.1.** Monitor temperatures
-and set bounded fan targets from the top panel, with asynchronous operations
-that keep GNOME responsive during driver enabling. See the
+**GNOME Shell 51 extension available in version 0.4.0.** Monitor temperatures
+and set supervised fan targets from the top panel, with asynchronous operations
+that keep GNOME responsive during driver enabling. Targets stay active until
+**Return all fans to automatic** or **End control session**. Use the **2000 RPM**,
+**3000 RPM** or **4000 RPM** buttons to set both fans together, or enter a shared
+RPM within their overlapping limits. See the
 [GNOME installation and usage guide](docs/GNOME.md).
 
 ```sh
@@ -40,9 +43,11 @@ In the control session:
 `R` refreshes; `Esc` cancels an RPM entry. Minimum terminal size: 42 columns ×
 14 rows. Lowercase keys work too.
 
-A manual target lasts **120 seconds** by default; `--hold-seconds 60` changes
-that limit (5–600 seconds). Setting a new target renews that fan's duration.
-There is no persistent or unattended manual-speed mode.
+In the terminal interface, a manual target lasts **120 seconds** by default; `--hold-seconds 60` changes
+that limit (5–600 seconds). Use `--hold-seconds 0` to hold until Auto or session
+exit, as the GNOME extension does. Setting a new timed target renews that fan's
+duration. All targets remain supervised and return on session disconnection;
+there is no unattended manual-speed mode.
 
 ## CLI
 
