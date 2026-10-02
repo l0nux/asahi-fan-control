@@ -1,5 +1,13 @@
 # Release notes
 
+## 0.3.1
+
+- Fixed false target mismatches on real hardware: allow up to 1.5 seconds for
+  asynchronous SMC read-back, retaining automatic recovery on timeout/failure.
+- Added delayed-read regression coverage and an attended real-hardware validator.
+- Verified physical RPM response, Auto acknowledgement, hold expiry and EOF
+  recovery on a local configuration. Private measurements are excluded.
+
 ## 0.3.0
 
 - Added an English GNOME Shell 51 panel with temperatures, fan RPM, per-fan

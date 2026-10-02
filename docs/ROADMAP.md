@@ -14,13 +14,17 @@
 6. Add a GNOME 51 extension with asynchronous telemetry/control, system
    authentication, a standalone ZIP and GJS/headless GNOME integration tests.
 
-## Validation still needed on hardware
+## Hardware validation completed locally
 
-A real manual set/return cycle with authenticated root access has not yet been
-performed on the development host. Test only in an attended session, starting
-from firmware control, without competing fan utilities, and verify that actual
-RPM responds to an in-range request. The program cannot read the physical SMC
-mode; a successful zero write is reported only as driver acceptance.
+An attended real-worker test verified upward RPM response, explicit automatic
+return acknowledgement, normal hold expiry, and recovery after client EOF.
+The test exposed delayed SMC target read-back; bounded settling was added while
+preserving strict validation and recovery on failure. Device-specific readings
+and reports remain local and are not committed.
+
+Additional models and kernel versions still need their own validation. The
+physical SMC mode is not readable; driver acceptance and observed RPM response
+are reported separately. No hardware fail-safe guarantee is made.
 
 ## Optional future work
 

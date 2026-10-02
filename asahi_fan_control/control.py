@@ -175,9 +175,18 @@ class Backend:
         owned.deadline = now() + self.hold_seconds
         try:
             write_number(owned.fd, rpm)
-            actual = read_number(device / f'fan{fan}_target')
-            if abs(actual - rpm) > 1:
-                raise ControlError(f'Target read-back mismatch: requested {rpm}, received {actual}.')
+            # SMC setpoints may become visible after the write has returned.
+            # Keep ownership throughout this bounded settling interval so all
+            # failures still take the automatic-return path below.
+            verify_until = min(owned.deadline, now() + 1.5)
+            while True:
+                actual = read_number(device / f'fan{fan}_target')
+                if abs(actual - rpm) <= 1:
+                    break
+                self.check_feedback(device, fan)
+                if now() >= verify_until:
+                    raise ControlError(f'Target read-back mismatch: requested {rpm}, received {actual}.')
+                time.sleep(0.05)
         except (OSError, ControlError) as error:
             try:
                 self.auto(fan)

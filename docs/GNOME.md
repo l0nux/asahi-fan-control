@@ -62,8 +62,9 @@ The existing bounded-control protocol, exclusive application lock, feedback
 checks, heartbeat lease and best-effort cleanup still apply. The UI never kills
 a fan-control worker to cancel a request. Manual mode remains marked unsafe by
 the driver; recovery is not a hardware fail-safe. Return to Auto before suspend.
-See [CONTROL.md](CONTROL.md). Real manual writes require separate hardware
-validation and are not covered by the simulated extension tests.
+See [CONTROL.md](CONTROL.md). A separate attended hardware test verified physical RPM response, Auto
+acknowledgement, expiry and EOF cleanup. Simulated extension tests alone do not
+prove hardware behavior; additional models and kernels need their own validation.
 
 ## Verify and remove
 

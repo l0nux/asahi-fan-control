@@ -1,6 +1,6 @@
 # Asahi Fan Control
 
-**GNOME Shell 51 extension available in version 0.3.0.** Monitor temperatures
+**GNOME Shell 51 extension available in version 0.3.1.** Monitor temperatures
 and set bounded fan targets from the top panel, with asynchronous operations
 that keep GNOME responsive during driver enabling. See the
 [GNOME installation and usage guide](docs/GNOME.md).
@@ -111,9 +111,11 @@ python3 -m compileall -q asahi_fan_control
 
 Tests include actual curses interaction through a pseudo-terminal and worker
 recovery against temporary sysfs fixtures. CI tests Python 3.10, 3.12 and 3.14.
-Automated tests never change the host fans. Real telemetry has been exercised;
-manual writes on the development machine have **not** been hardware-validated
-because interactive sudo authentication is required.
+Automated tests never change the host fans. An attended hardware test verified physical RPM response, explicit Auto
+acknowledgement, timed expiry and EOF recovery using the real control worker.
+SMC setpoint read-back can lag writes; verification allows at most 1.5 seconds
+for it to settle. Machine-specific measurements remain local and ignored.
+This validates the tested configuration, not every model or kernel.
 
 See [hardware interfaces](docs/HARDWARE.md), [control design](docs/CONTROL.md),
 [roadmap](docs/ROADMAP.md), and [release notes](CHANGELOG.md).

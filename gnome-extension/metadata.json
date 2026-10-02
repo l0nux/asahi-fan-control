@@ -2,8 +2,10 @@
   "uuid": "asahi-fan-control@l0nux.github.io",
   "name": "Asahi Fan Control",
   "description": "Temperatures, fan speeds and bounded manual fan control for Asahi Linux. Monitoring is unprivileged; manual control requires authentication.",
-  "shell-version": ["51"],
-  "version": 3,
-  "version-name": "0.3.0",
+  "shell-version": [
+    "51"
+  ],
+  "version": 4,
+  "version-name": "0.3.1",
   "url": "https://github.com/l0nux/asahi-fan-control"
 }

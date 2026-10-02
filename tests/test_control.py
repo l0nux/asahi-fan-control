@@ -143,6 +143,18 @@ class BackendTests(unittest.TestCase):
                 self.backend.set(1, 2000)
         self.assertEqual(self.writes, [2000, 0])
 
+    def test_delayed_target_readback_keeps_ownership_until_verified(self):
+        values = iter([1800, 1800, 2500])
+        def delayed(path):
+            if path.name == 'fan1_target':
+                self.assertIn(1, self.backend.owned)
+                return next(values)
+            return read_number(path)
+        with patch('asahi_fan_control.control.read_number', side_effect=delayed):
+            self.backend.set(1, 2500)
+        self.assertEqual(self.writes, [2500])
+        self.assertIn(1, self.backend.owned)
+
     def test_auto_all_uses_zero_without_reloading(self):
         with patch.object(self.backend, 'modprobe') as reload:
             self.backend.auto(all_fans=True)
