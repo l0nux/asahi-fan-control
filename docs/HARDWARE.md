@@ -40,7 +40,7 @@ session; its Enable action may reload macsmc_hwmon. Boot configuration is never
 edited. See [control design](CONTROL.md) for the write protocol and limitations.
 A writable target or a nonzero setpoint does not prove the current SMC policy.
 
-Manual control uses a separate worker with bounded holds and automatic-return
+Manual control uses a separate worker with supervised session targets and automatic-return
 requests. An attended hardware cycle has been validated locally; process recovery cannot
 cover every crash, suspend state or competing service. This project does not promise hardware fail-safe behavior.
 

@@ -1,5 +1,17 @@
 # Release notes
 
+## 0.4.0
+
+- GNOME manual targets now stay active until Auto or End control session;
+  feedback checks, heartbeat recovery and disconnect cleanup remain active.
+- Added a third, shared RPM field and 2000/3000/4000 RPM presets for both fans.
+  Shared commands validate both ranges before writing and attempt automatic
+  recovery if either fan fails during application.
+- The terminal supports `--hold-seconds 0` for session lifetime; its default
+  remains 120 seconds.
+- Added backend, asynchronous transport and real GNOME panel tests for the
+  shared controls, presets and unlimited supervised targets.
+
 ## 0.3.1
 
 - Fixed false target mismatches on real hardware: allow up to 1.5 seconds for

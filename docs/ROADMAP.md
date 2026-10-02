@@ -14,6 +14,9 @@
 6. Add a GNOME 51 extension with asynchronous telemetry/control, system
    authentication, a standalone ZIP and GJS/headless GNOME integration tests.
 
+7. Keep GNOME targets active until Auto or session end, add a shared RPM field
+   and 2000/3000/4000 RPM presets, and test continued supervision and recovery.
+
 ## Hardware validation completed locally
 
 An attended real-worker test verified upward RPM response, explicit automatic

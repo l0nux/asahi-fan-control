@@ -29,7 +29,7 @@ isolation for recovery, **not a security privilege boundary**: both processes
 run as root in a real control session. No network server or privileged service
 is installed.
 
-The worker holds `/run/asahi-fan-control.lock` and accepts only enable, set,
+The worker holds `/run/asahi-fan-control.lock` and accepts only enable, set, set_all,
 auto and status operations. Fan indices and RPMs must be integers. All hardware
 paths are constructed from a dynamically discovered macsmc device; the CLI
 cannot supply arbitrary sysfs paths. Open target descriptors are retained for
@@ -37,13 +37,21 @@ recovery so a renumbered hwmon entry is not mistaken for the original device.
 The worker registers ownership before a write, since a failed target write
 may already have changed the driver's manual-mode bit.
 
+The shared-target operation requires exactly two fan channels and validates
+both ranges, feedback and write access before applying either target. Writes
+are sequential, not atomic. If either application fails, the worker attempts
+Auto for all session-owned fans and reports any recovery failure. A shared
+target does not continually link subsequent individual fan edits.
+
 ## Lifetime
 
-- A target expires after its configured 5–600 second hold.
+- GNOME targets have no elapsed-time limit; they remain until Auto or session
+  end. The terminal defaults to 120 seconds and accepts 5–600 seconds, or
+  `--hold-seconds 0` for the same session lifetime as GNOME.
 - The worker checks fan feedback and target consistency approximately every 0.2s.
 - Zero RPM after a five-second spin-up grace period triggers automatic return.
 - The dashboard sends status heartbeats about twice per second, including while
-  paused or editing a target. Five seconds without messages ends the worker.
+  paused or editing a target; GNOME sends them once per second. Five seconds without messages ends the worker.
 - EOF, caught SIGTERM/SIGINT/SIGHUP, or normal exit requests automatic control
   for every fan touched by the session. Terminal job-control stop is ignored by
   the worker. Cleanup failures produce errors and are retried three times.

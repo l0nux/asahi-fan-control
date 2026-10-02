@@ -27,6 +27,12 @@ async function main() {
         assert(worker.state.manual['1'].rpm === 2500, 'Set response');
         await worker.request('set', {fan: 2, rpm: 2700});
         assert(worker.state.manual['2'].rpm === 2700, 'Independent fan control');
+        await worker.request('set_all', {rpm: 3000});
+        assert(worker.state.manual['1'].rpm === 3000 && worker.state.manual['2'].rpm === 3000, 'Shared target');
+        assert(Object.values(worker.state.manual).every(fan => fan.remaining === null), 'No target expiry');
+        let invalidShared = false;
+        try { await worker.request('set_all', {rpm: 1400}); } catch (_) { invalidShared = true; }
+        assert(invalidShared && worker.state.manual['1'].rpm === 3000, 'Shared bounds reject without mutation');
         await worker.request('auto');
         assert(Object.keys(worker.state.manual).length === 0, 'Automatic request');
     } finally {
